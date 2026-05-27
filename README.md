@@ -22,7 +22,7 @@ QQ 客户端 ←→ OneBot 实现 (NapCat/go-cqhttp)
 - 关键词触发（`mention_patterns`，群聊中匹配关键词即回复，类似 Telegram）
 - 图片、语音、文件收发
 - 回复消息
-- emoji 表情回应（群聊）和戳一戳（私聊）
+- emoji 表情回应（群聊）和戳一戳（私聊）（可通过 `enable_reaction: false` 关闭）
 - 长消息自动拆分 + 合并转发（群聊，避免刷屏）
 - 正向 WebSocket (Hermes → LLBot) + 反向 WebSocket (LLBot → Hermes)
 - 群白名单 / 黑名单（按群号过滤，白名单优先）
@@ -68,6 +68,8 @@ platforms:
       # mention_patterns:
       #   - "芙芙"
       #   - "帮我"
+      # 关闭 emoji 表情回应和戳一戳（默认 true）
+      # enable_reaction: false
 ```
 
 ## 环境变量（可选）

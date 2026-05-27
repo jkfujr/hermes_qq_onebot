@@ -474,6 +474,9 @@ class QQAdapter(BasePlatformAdapter):
             p.strip() for p in str(raw_group_bl).split(",") if p.strip()
         )
 
+        # Emoji reaction toggle (group emoji_like + private poke)
+        self._enable_reaction: bool = extra.get("enable_reaction", True)
+
     def _compile_mention_patterns(self, extra: dict) -> List[re.Pattern]:
         """Compile regex wake-word patterns for group triggers."""
         patterns = extra.get("mention_patterns")
@@ -768,7 +771,7 @@ class QQAdapter(BasePlatformAdapter):
             reply_to_message_id=reply_to_id, reply_to_text=reply_to_text,
         )
 
-        if message_id:
+        if message_id and self._enable_reaction:
             try:
                 if message_type == "group":
                     # 群聊：表情回应

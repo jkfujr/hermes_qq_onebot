@@ -25,6 +25,7 @@ QQ 客户端 ←→ OneBot 实现 (NapCat/go-cqhttp)
 - emoji 表情回应（群聊）和戳一戳（私聊）
 - 长消息自动拆分 + 合并转发（群聊，避免刷屏）
 - 正向 WebSocket (Hermes → LLBot) + 反向 WebSocket (LLBot → Hermes)
+- 群白名单 / 黑名单（按群号过滤，白名单优先）
 - 用户授权（通过网关层 `QQ_ONEBOT_ALLOWED_USERS` 环境变量统一管理）
 - HTTP API 独立通道 (可与 WS 并用)
 - 消息去重
@@ -58,6 +59,10 @@ platforms:
       # ws_path: "/onebot/v11/ws"
       access_token: ""
       show_qq_id: false         # 在 user_name 里附带 QQ 号，如 用户名(123456)
+      # 群白名单（逗号分隔群号），仅响应这些群的消息（优先于黑名单）
+      group_whitelist: ""
+      # 群黑名单（逗号分隔群号），忽略这些群的消息（白名单为空时生效）
+      group_blacklist: ""
       # 群聊关键词触发（正则，不区分大小写），匹配到即触发回复（不需要 @）
       # 支持字符串或列表，也可用环境变量 QQ_MENTION_PATTERNS=芙芙,帮我
       # mention_patterns:
@@ -72,6 +77,8 @@ QQ_ONEBOT_WS_URL=ws://127.0.0.1:3001/onebot/v11/ws  # 正向模式
 QQ_ONEBOT_ALLOWED_USERS=123456,789012                 # 允许的 QQ 号
 QQ_ONEBOT_ALLOW_ALL_USERS=false                       # 允许所有用户
 QQ_HOME_CHANNEL=qq_group_123456789                    # 默认发送目标
+QQ_ONEBOT_GROUP_WHITELIST=111111,222222                # 群白名单（仅响应这些群）
+QQ_ONEBOT_GROUP_BLACKLIST=333333,444444                # 群黑名单（忽略这些群）
 ```
 
 ## 卸载

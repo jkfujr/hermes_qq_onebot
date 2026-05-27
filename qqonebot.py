@@ -28,11 +28,15 @@ Configuration in config.yaml:
           reverse_port: 6700
           access_token: ""
           show_qq_id: false         # 在 user_name 里附带 QQ 号，如 用户名(123456)
+          group_whitelist: ""        # 群白名单（逗号分隔），仅响应这些群
+          group_blacklist: ""        # 群黑名单（逗号分隔），忽略这些群（白名单优先）
 
 Environment variables:
     QQ_ACCESS_TOKEN     - OneBot access_token
     QQ_WS_URL           - Full WebSocket URL (overrides ws_host/port/path)
     QQ_REVERSE_MODE     - Set to "true" for reverse WS mode
+    QQ_ONEBOT_GROUP_WHITELIST  - Group whitelist (comma-separated group IDs)
+    QQ_ONEBOT_GROUP_BLACKLIST  - Group blacklist (comma-separated group IDs)
 
     QQ_HOME_CHANNEL     - Default chat_id for sending (user_id or group_id)
 """
@@ -458,6 +462,18 @@ class QQAdapter(BasePlatformAdapter):
             p.strip() for p in str(raw_allow).split(",") if p.strip()
         )
 
+        # Group whitelist — if set, only respond in these groups
+        raw_group_wl = extra.get("group_whitelist", "") or os.getenv("QQ_ONEBOT_GROUP_WHITELIST", "")
+        self._group_whitelist: frozenset[str] = frozenset(
+            p.strip() for p in str(raw_group_wl).split(",") if p.strip()
+        )
+
+        # Group blacklist — if set, ignore these groups (whitelist takes priority)
+        raw_group_bl = extra.get("group_blacklist", "") or os.getenv("QQ_ONEBOT_GROUP_BLACKLIST", "")
+        self._group_blacklist: frozenset[str] = frozenset(
+            p.strip() for p in str(raw_group_bl).split(",") if p.strip()
+        )
+
     def _compile_mention_patterns(self, extra: dict) -> List[re.Pattern]:
         """Compile regex wake-word patterns for group triggers."""
         patterns = extra.get("mention_patterns")
@@ -496,6 +512,20 @@ class QQAdapter(BasePlatformAdapter):
         if not self._allow_from:
             return True
         return user_id in self._allow_from
+
+    def _is_group_allowed(self, group_id: str) -> bool:
+        """Check whether a QQ group passes whitelist/blacklist filter.
+
+        Priority: whitelist > blacklist > allow all.
+        - If whitelist is set, only whitelisted groups are allowed.
+        - If only blacklist is set, all groups except blacklisted ones are allowed.
+        - If neither is set, all groups are allowed.
+        """
+        if self._group_whitelist:
+            return group_id in self._group_whitelist
+        if self._group_blacklist:
+            return group_id not in self._group_blacklist
+        return True
 
     # ── Connection lifecycle ────────────────────────────────────────────
 
@@ -653,6 +683,10 @@ class QQAdapter(BasePlatformAdapter):
 
         # User allowlist filter (skip all processing for non-allowed users)
         if not self._is_user_allowed(user_id):
+            return
+
+        # Group whitelist/blacklist filter
+        if message_type == "group" and group_id and not self._is_group_allowed(group_id):
             return
 
         # @Mention detection in groups (early filter)

@@ -532,7 +532,7 @@ class QQAdapter(BasePlatformAdapter):
 
     # ── Connection lifecycle ────────────────────────────────────────────
 
-    async def connect(self) -> bool:
+    async def connect(self, is_reconnect: bool = False) -> bool:
         if self._reverse_mode:
             # 反向 WS 模式：起 server 等 LLBot 连上来
             self._ws_server = _OneBotWSServer(self._ws_client, self._handle_ws_event)

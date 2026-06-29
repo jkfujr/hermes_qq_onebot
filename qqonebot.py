@@ -1224,11 +1224,12 @@ class QQAdapter(BasePlatformAdapter):
     async def send_image_file(self, chat_id: str, image_path: str, caption: str = "", **kwargs) -> SendResult:
         """Send a local image file natively via QQ.
 
-        Uses base64 encoding for local files so NapCat (which may run on a
-        different host) can receive the image without needing filesystem access.
-        Falls back to file:// URI for very large files.
+        For local files, copies to a temporary HTTP-accessible directory and
+        sends the URL (NapCat runs on a different host and cannot read local
+        file paths). Falls back to base64 for small files if HTTP server is
+        unavailable.
         """
-        import base64, os
+        import os, shutil, uuid
 
         # Send caption text first if present
         if caption and caption.strip():
@@ -1237,16 +1238,31 @@ class QQAdapter(BasePlatformAdapter):
             except Exception:
                 pass
 
-        # Try base64 encoding for local files (works across hosts)
+        _MEDIA_DIR = "/tmp/hermes_media"
+        _MEDIA_URL = "http://100.100.201.52:18888"  # internal network
+
         file_uri = image_path
+
         if os.path.isfile(image_path):
+            # Copy to HTTP-accessible directory with unique name
             try:
-                with open(image_path, "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode()
-                file_uri = f"base64://{b64}"
+                ext = os.path.splitext(image_path)[1] or ".png"
+                fname = f"{uuid.uuid4().hex}{ext}"
+                dst = os.path.join(_MEDIA_DIR, fname)
+                shutil.copy2(image_path, dst)
+                file_uri = f"{_MEDIA_URL}/{fname}"
+                logger.info("[QQ] Serving image via HTTP: %s", file_uri)
             except Exception as e:
-                logger.warning("[QQ] base64 encode failed, falling back to file URI: %s", e)
-                file_uri = f"file://localhost{image_path}" if image_path.startswith("/") else f"file://localhost/{image_path}"
+                logger.warning("[QQ] Failed to copy to media dir: %s", e)
+                # Fallback: base64 for small files
+                file_size = os.path.getsize(image_path)
+                if file_size < 200 * 1024:  # < 200KB
+                    import base64
+                    with open(image_path, "rb") as f:
+                        b64 = base64.b64encode(f.read()).decode()
+                    file_uri = f"base64://{b64}"
+                else:
+                    file_uri = f"file://localhost{image_path}" if image_path.startswith("/") else f"file://localhost/{image_path}"
         elif not image_path.startswith(("http://", "https://", "base64://")):
             file_uri = f"file://localhost{image_path}" if image_path.startswith("/") else f"file://localhost/{image_path}"
 

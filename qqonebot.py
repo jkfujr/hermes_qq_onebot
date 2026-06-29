@@ -129,13 +129,15 @@ def _text_segment(text: str) -> dict:
 def _image_segment(uri: str) -> dict:
     if uri.startswith(("http://", "https://")):
         return {"type": "image", "data": {"file": uri}}
-    # Strip existing file:// prefix if present, then normalize
+    # Strip existing file:// prefix if present
     if uri.startswith("file://"):
         uri = uri[7:]
-    # Use bare absolute path — NapCat and most OneBot impls handle this
-    # more reliably than file:/// URIs (NapCat sometimes parses
-    # file:///path as //path due to off-by-one stripping).
-    return {"type": "image", "data": {"file": uri}}
+    # Use file://localhost/path format — NapCat strips 'file://' (7 chars)
+    # so this yields 'localhost/path' instead of the broken '//path' from
+    # file:///path.  'localhost/' is harmless and the file resolves correctly.
+    if not uri.startswith("/"):
+        uri = "/" + uri
+    return {"type": "image", "data": {"file": f"file://localhost{uri}"}}
 
 def _reply_segment(message_id: str) -> dict:
     return {"type": "reply", "data": {"id": message_id}}
@@ -148,7 +150,9 @@ def _record_segment(uri: str) -> dict:
         return {"type": "record", "data": {"file": uri}}
     if uri.startswith("file://"):
         uri = uri[7:]
-    return {"type": "record", "data": {"file": uri}}
+    if not uri.startswith("/"):
+        uri = "/" + uri
+    return {"type": "record", "data": {"file": f"file://localhost{uri}"}}
 
 def _file_segment(uri: str) -> dict:
     return {"type": "file", "data": {"file": uri}}

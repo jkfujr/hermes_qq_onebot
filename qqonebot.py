@@ -129,7 +129,13 @@ def _text_segment(text: str) -> dict:
 def _image_segment(uri: str) -> dict:
     if uri.startswith(("http://", "https://")):
         return {"type": "image", "data": {"file": uri}}
-    return {"type": "image", "data": {"file": f"file:///{uri}"}}
+    # Strip existing file:// prefix if present, then normalize
+    if uri.startswith("file://"):
+        uri = uri[7:]
+    # Use bare absolute path — NapCat and most OneBot impls handle this
+    # more reliably than file:/// URIs (NapCat sometimes parses
+    # file:///path as //path due to off-by-one stripping).
+    return {"type": "image", "data": {"file": uri}}
 
 def _reply_segment(message_id: str) -> dict:
     return {"type": "reply", "data": {"id": message_id}}
@@ -140,7 +146,9 @@ def _at_segment(qq_id: str) -> dict:
 def _record_segment(uri: str) -> dict:
     if uri.startswith(("http://", "https://")):
         return {"type": "record", "data": {"file": uri}}
-    return {"type": "record", "data": {"file": f"file:///{uri}"}}
+    if uri.startswith("file://"):
+        uri = uri[7:]
+    return {"type": "record", "data": {"file": uri}}
 
 def _file_segment(uri: str) -> dict:
     return {"type": "file", "data": {"file": uri}}

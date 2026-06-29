@@ -1180,12 +1180,56 @@ class QQAdapter(BasePlatformAdapter):
         except Exception as e:
             return SendResult(success=False, error=str(e))
 
+    async def send_multiple_images(
+        self,
+        chat_id: str,
+        images: list,
+        metadata: dict = None,
+        human_delay: float = 0.0,
+    ) -> None:
+        """Override base send_multiple_images to handle file:// URIs correctly.
+
+        The gateway constructs file:///path URIs.  The base adapter naively
+        strips 7 chars (file://) yielding //path — broken for NapCat.
+        Use urllib.parse.urlparse for correct extraction, then send via
+        base64 encoding for local files (NapCat runs on a different host
+        and cannot read local file paths from the gateway).
+        """
+        import asyncio
+        from urllib.parse import urlparse, unquote
+
+        for image_url, alt_text in images:
+            if human_delay > 0:
+                await asyncio.sleep(human_delay)
+            try:
+                if image_url.startswith("file://"):
+                    parsed = urlparse(image_url)
+                    local_path = unquote(parsed.path)
+                    await self.send_image_file(
+                        chat_id=chat_id,
+                        image_path=local_path,
+                        caption=alt_text if alt_text else None,
+                        metadata=metadata,
+                    )
+                else:
+                    # HTTP/HTTPS URL — send directly
+                    await self.send_image(
+                        chat_id=chat_id,
+                        image_url=image_url,
+                        caption=alt_text if alt_text else "",
+                    )
+            except Exception as e:
+                logger.warning("[QQ] send_multiple_images item failed: %s", e)
+
     async def send_image_file(self, chat_id: str, image_path: str, caption: str = "", **kwargs) -> SendResult:
         """Send a local image file natively via QQ.
 
-        Uses HTTP API when available (LLBot reverse WS never returns echo
-        for image messages, causing 60s timeouts).  Falls back to WS otherwise.
+        Uses base64 encoding for local files so NapCat (which may run on a
+        different host) can receive the image without needing filesystem access.
+        Falls back to file:// URI for very large files.
         """
+        import base64, os
+
         # Send caption text first if present
         if caption and caption.strip():
             try:
@@ -1193,7 +1237,20 @@ class QQAdapter(BasePlatformAdapter):
             except Exception:
                 pass
 
-        segments = [_image_segment(image_path)]
+        # Try base64 encoding for local files (works across hosts)
+        file_uri = image_path
+        if os.path.isfile(image_path):
+            try:
+                with open(image_path, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode()
+                file_uri = f"base64://{b64}"
+            except Exception as e:
+                logger.warning("[QQ] base64 encode failed, falling back to file URI: %s", e)
+                file_uri = f"file://localhost{image_path}" if image_path.startswith("/") else f"file://localhost/{image_path}"
+        elif not image_path.startswith(("http://", "https://", "base64://")):
+            file_uri = f"file://localhost{image_path}" if image_path.startswith("/") else f"file://localhost/{image_path}"
+
+        segments = [{"type": "image", "data": {"file": file_uri}}]
         message_type, target_id = self._get_delivery_target(chat_id)
 
         # Prefer HTTP API for images — reverse WS never returns echo for them

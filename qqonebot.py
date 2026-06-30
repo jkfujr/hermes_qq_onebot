@@ -1224,12 +1224,11 @@ class QQAdapter(BasePlatformAdapter):
     async def send_image_file(self, chat_id: str, image_path: str, caption: str = "", **kwargs) -> SendResult:
         """Send a local image file natively via QQ.
 
-        For local files, copies to a temporary HTTP-accessible directory and
-        sends the URL (NapCat runs on a different host and cannot read local
-        file paths). Falls back to base64 for small files if HTTP server is
-        unavailable.
+        For local files, encodes as base64 (OneBot native base64:// protocol).
+        Max 4MB per file; larger files will fail with a clear error.
+        HTTP/HTTPS URLs are passed through directly.
         """
-        import os, shutil, uuid
+        import os, base64
 
         # Send caption text first if present
         if caption and caption.strip():
@@ -1238,31 +1237,20 @@ class QQAdapter(BasePlatformAdapter):
             except Exception:
                 pass
 
-        _MEDIA_DIR = "/tmp/hermes_media"
-        _MEDIA_URL = "http://100.100.201.52:18888"  # internal network
-
         file_uri = image_path
+        _MAX_B64_SIZE = 4 * 1024 * 1024  # 4MB
 
         if os.path.isfile(image_path):
-            # Copy to HTTP-accessible directory with unique name
-            try:
-                ext = os.path.splitext(image_path)[1] or ".png"
-                fname = f"{uuid.uuid4().hex}{ext}"
-                dst = os.path.join(_MEDIA_DIR, fname)
-                shutil.copy2(image_path, dst)
-                file_uri = f"{_MEDIA_URL}/{fname}"
-                logger.info("[QQ] Serving image via HTTP: %s", file_uri)
-            except Exception as e:
-                logger.warning("[QQ] Failed to copy to media dir: %s", e)
-                # Fallback: base64 for small files
-                file_size = os.path.getsize(image_path)
-                if file_size < 200 * 1024:  # < 200KB
-                    import base64
-                    with open(image_path, "rb") as f:
-                        b64 = base64.b64encode(f.read()).decode()
-                    file_uri = f"base64://{b64}"
-                else:
-                    file_uri = f"file://localhost{image_path}" if image_path.startswith("/") else f"file://localhost/{image_path}"
+            file_size = os.path.getsize(image_path)
+            if file_size > _MAX_B64_SIZE:
+                return SendResult(
+                    success=False,
+                    error=f"Image too large ({file_size / 1024 / 1024:.1f}MB), max {_MAX_B64_SIZE // 1024 // 1024}MB",
+                )
+            with open(image_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            file_uri = f"base64://{b64}"
+            logger.info("[QQ] Sending image as base64 (%dKB)", file_size // 1024)
         elif not image_path.startswith(("http://", "https://", "base64://")):
             file_uri = f"file://localhost{image_path}" if image_path.startswith("/") else f"file://localhost/{image_path}"
 
